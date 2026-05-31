@@ -60,9 +60,9 @@ class Game:
     def create_buttons(self):
         panel_x = self.board_pixel_size + 40
 
-        self.reset_button = pr.Rectangle(panel_x, 470, 320, 46)
-        self.hint_button = pr.Rectangle(panel_x, 530, 320, 46)
-        self.god_button = pr.Rectangle(panel_x, 590, 320, 46)
+        self.reset_button = pr.Rectangle(panel_x, 430, 320, 46)
+        self.hint_button = pr.Rectangle(panel_x, 490, 320, 46)
+        self.god_button = pr.Rectangle(panel_x, 550, 320, 46)
 
     def handle_input(self):
         self.handle_keyboard_input()
@@ -274,13 +274,12 @@ class Game:
         if N <= 1:
             return
 
-        # Colors del gradient: del verd vibrant (inici) al daurat taronja (final)
+        # Colors del gradient: de verd  a taronja
         start_color = pr.Color(80, 220, 120, 180)
         end_color = pr.Color(245, 150, 35, 180)
 
-        for i, (row, col) in enumerate(path):
-            if i == 0:
-                continue
+        for i in range(N - 1, 0, -1):
+            row, col = path[i]
 
             t = i / (N - 1)
             r = int(start_color.r + t * (end_color.r - start_color.r))
@@ -301,6 +300,22 @@ class Game:
                 color,
             )
 
+            # Dibuixem el número de pas en blanc amb contrast alt sobre un disc fosc
+            text = str(i)
+            font_size = 18
+            text_width = pr.measure_text(text, font_size)
+            center_x = x + self.cell_size // 2
+            center_y = y + self.cell_size // 2
+
+            pr.draw_circle(center_x, center_y, 12, pr.Color(20, 20, 25, 200))
+            pr.draw_text(
+                text,
+                center_x - text_width // 2,
+                center_y - 9,
+                font_size,
+                pr.WHITE,
+            )
+
     def draw_panel(self):
         panel_x = self.board_pixel_size
 
@@ -316,10 +331,10 @@ class Game:
     
         pr.draw_text("Laberint de l'Anell d'Or", x, 36, 30, pr.WHITE)
     
-        self.draw_stats(x, 90)
-        self.draw_controls(x, 300)
+        self.draw_stats(x, 100)
+        self.draw_controls(x, 310)
         self.draw_buttons()
-        self.draw_message(x, 600)
+        self.draw_message(x, 610)
 
     def draw_stats(self, x, y):
         pr.draw_text("Estat", x, y, 24, pr.WHITE)
