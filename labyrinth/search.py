@@ -1,129 +1,58 @@
 from aima3.search import Problem, astar_search
-from board import BRONZE, SILVER, GOLD, BRONZE_TOTAL, SILVER_TOTAL, GOLD_TOTAL
-
+from board import BRONZE, SILVER, GOLD, BRONZE_TOTAL, SILVER_TOTAL, DIRECTIONS
 
 class LabyrinthProblem(Problem):
     def __init__(self, board):
-        # Definim l'estat inicial com una tupla:
-        # (posició_jugador, frozenset de bronzes recollits, frozenset de plates recollides)
-        initial_state = (
-            board.player_position,
-            frozenset(),
-            frozenset()
-        )
-        super().__init__(initial_state)
-        
+        super().__init__((board.player_position, frozenset(), frozenset()))
         self.board = board
-        # Guardem les posicions de tots els anells del mapa inicial
         self.bronze_positions = frozenset(board.get_ring_positions(BRONZE))
         self.silver_positions = frozenset(board.get_ring_positions(SILVER))
-        gold_positions = board.get_ring_positions(GOLD)
-        self.gold_position = gold_positions[0] if gold_positions else None
+        self.gold_position = next(iter(board.get_ring_positions(GOLD)), None)
+        self.bronze_to_collect = len(self.bronze_positions)
+        self.silver_to_collect = len(self.silver_positions)
 
     def actions(self, state):
-        """Retorna les accions vàlides (moviments) des d'un estat."""
-        pos, bronze_collected, silver_collected = state
-        row, col = pos
-        
-        valid_actions = []
-        from board import DIRECTIONS
-        
-        for d_row, d_col in DIRECTIONS:
-            new_row = row + d_row
-            new_col = col + d_col
-            
-            # Comprovem si el jugador pot entrar en aquesta casella
-            # simulant el nombre d'anells que portem recollits en aquest estat
-            if self.board.can_enter_with_counts(
-                new_row,
-                new_col,
-                len(bronze_collected),
-                len(silver_collected)
-            ):
-                valid_actions.append((d_row, d_col))
-                
-        return valid_actions
+        (r, c), b, s = state
+        tot_b = self.board.bronze_collected + len(b)
+        tot_s = self.board.silver_collected + len(s)
+        return [(dr, dc) for dr, dc in DIRECTIONS if self.board.can_enter_with_counts(r + dr, c + dc, tot_b, tot_s)]
 
     def result(self, state, action):
-        """Aplica una acció (moviment) i retorna el nou estat resultant."""
-        pos, bronze_collected, silver_collected = state
-        row, col = pos
-        d_row, d_col = action
-        
-        new_row = row + d_row
-        new_col = col + d_col
-        new_pos = (new_row, new_col)
-        
-        new_bronze = set(bronze_collected)
-        new_silver = set(silver_collected)
-        
-        # Mirem quin element hi ha a la casella de destí
-        cell_content = self.board.grid[new_row][new_col]
-        
-        if cell_content == BRONZE:
-            new_bronze.add(new_pos)
-        elif cell_content == SILVER:
-            # Només el podem recollir si ja tenim tots els bronzes
-            if len(bronze_collected) == BRONZE_TOTAL:
-                new_silver.add(new_pos)
-                
-        return (new_pos, frozenset(new_bronze), frozenset(new_silver))
+        (r, c), b, s = state
+        nr, nc = r + action[0], c + action[1]
+        npos = (nr, nc)
+        cell = self.board.grid[nr][nc]
+        nb = b | {npos} if cell == BRONZE else b
+        tot_b = self.board.bronze_collected + len(nb)
+        ns = s | {npos} if cell == SILVER and tot_b == BRONZE_TOTAL else s
+        return (npos, frozenset(nb), frozenset(ns))
 
     def goal_test(self, state):
-        """Comprova si l'estat és l'objectiu final (l'or amb tots els altres recollits)."""
-        pos, bronze_collected, silver_collected = state
-        
-        has_all_bronze = len(bronze_collected) == BRONZE_TOTAL
-        has_all_silver = len(silver_collected) == SILVER_TOTAL
-        at_gold = pos == self.gold_position
-        
-        return at_gold and has_all_bronze and has_all_silver
+        pos, b, s = state
+        return pos == self.gold_position and len(b) == self.bronze_to_collect and len(s) == self.silver_to_collect
 
     def path_cost(self, c, state1, action, state2):
-        """Cada moviment en el laberint té un cost d'1."""
         return c + 1
 
-
 def labyrinth_heuristic(node, problem):
-    """
-    Heurística consistent i admissible basada en la distància de Manhattan
-    al següent objectiu més proper en la cadena lògica (Bronze -> Plata -> Or).
-    """
-    state = node.state
-    pos, bronze_collected, silver_collected = state
-    row, col = pos
-    
-    # 1. Si encara queden anells de bronze per recollir
-    if len(bronze_collected) < BRONZE_TOTAL:
-        remaining_bronze = problem.bronze_positions - bronze_collected
-        if not remaining_bronze:
-            return 0
-        return min(abs(row - r) + abs(col - c) for r, c in remaining_bronze)
-        
-    # 2. Si ja tenim tots els bronzes però queden plates per recollir
-    if len(silver_collected) < SILVER_TOTAL:
-        remaining_silver = problem.silver_positions - silver_collected
-        if not remaining_silver:
-            return 0
-        return min(abs(row - r) + abs(col - c) for r, c in remaining_silver)
-        
-    # 3. Si ja tenim tots els bronzes i plates, el destí és l'or
-    if problem.gold_position:
-        g_row, g_col = problem.gold_position
-        return abs(row - g_row) + abs(col - g_col)
-        
-    return 0
+    (r, c), b, s = node.state
+    if len(b) < problem.bronze_to_collect:
+        targets = problem.bronze_positions - b
+        remaining_cost = problem.silver_to_collect + 1
+    elif len(s) < problem.silver_to_collect:
+        targets = problem.silver_positions - s
+        remaining_cost = 1
+    else:
+        targets = {problem.gold_position} if problem.gold_position else set()
+        remaining_cost = 0
 
+    if not targets:
+        return 0
+
+    dist_to_closest = min(abs(r - tr) + abs(c - tc) for tr, tc in targets)
+    return dist_to_closest + (len(targets) - 1) + remaining_cost
 
 def get_astar_path(board):
-    """
-    Executa l'algorisme A* d'AIMA i retorna una llista de coordenades (row, col)
-    que formen el camí des de la posició inicial fins a la victòria.
-    """
     problem = LabyrinthProblem(board)
-    goal_node = astar_search(problem, h=lambda n: labyrinth_heuristic(n, problem))
-    
-    if goal_node:
-        path_nodes = goal_node.path()
-        return [node.state[0] for node in path_nodes]
-    return []
+    goal = astar_search(problem, h=lambda n: labyrinth_heuristic(n, problem))
+    return [n.state[0] for n in goal.path()] if goal else []
