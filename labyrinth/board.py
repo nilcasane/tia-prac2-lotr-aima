@@ -35,33 +35,29 @@ class Board:
 
         self.move_count = 0
         self.victory = False
+        self.defeat = False
+        self.initial_min_cost = 0
 
         self.generate_map()
 
     def generate_map(self):
-        """
-        Genera un mapa nou.
-        Ho intenta diverses vegades per evitar mapes impossibles.
-        """
-        max_attempts = 500
-
-        for _ in range(max_attempts):
+        self.player_position = None
+        self.bronze_collected = 0
+        self.silver_collected = 0
+        self.gold_collected = 0
+        self.move_count = 0
+        self.victory = False
+        self.defeat = False
+        
+        for _ in range(500):
             self.grid = self.create_empty_grid()
-            self.player_position = None
-
-            self.bronze_collected = 0
-            self.silver_collected = 0
-            self.gold_collected = 0
-            self.move_count = 0
-            self.victory = False
-
             self.place_barriers()
             self.place_rings(BRONZE, BRONZE_TOTAL)
             self.place_rings(SILVER, SILVER_TOTAL)
             self.place_rings(GOLD, GOLD_TOTAL)
             self.player_position = self.get_random_empty_cell()
-
-            if self.is_map_reasonably_playable():
+            
+            if self.is_map_playable():
                 return
 
         raise RuntimeError("No s'ha pogut generar un mapa vàlid.")
@@ -74,9 +70,9 @@ class Board:
 
     def place_barriers(self):
         for length in BARRIER_LENGTHS:
-            self.place_single_barrier(length)
+            self.place_barrier(length)
 
-    def place_single_barrier(self, length):
+    def place_barrier(self, length):
         """
         Col·loca una barrera de caselles consecutives.
         Pot ser horitzontal, vertical o diagonal.
@@ -88,9 +84,7 @@ class Board:
             (1, -1),   # diagonal cap avall-esquerra
         ]
 
-        max_attempts = 1000
-
-        for _ in range(max_attempts):
+        for _ in range(1000):
             start_row = self.rng.randint(0, self.size - 1)
             start_col = self.rng.randint(0, self.size - 1)
             d_row, d_col = self.rng.choice(orientations)
@@ -211,7 +205,7 @@ class Board:
         Mou el jugador si el moviment és vàlid.
         Retorna True si s'ha mogut i False si no.
         """
-        if self.victory:
+        if self.victory or self.defeat:
             return False
 
         current_row, current_col = self.player_position
@@ -225,6 +219,9 @@ class Board:
         self.move_count += 1
 
         self.collect_ring_if_needed(new_row, new_col)
+
+        if self.move_count > self.initial_min_cost + 5:
+            self.defeat = True
 
         return True
 
@@ -275,42 +272,12 @@ class Board:
 
         return neighbors
 
-    def is_map_reasonably_playable(self):
-        """
-        Comprovació simple perquè el mapa no sigui absurd:
-        mira que des de la posició inicial es pugui arribar almenys
-        a algun anell de bronze.
-
-        Més endavant, quan tinguem A*, podrem substituir això
-        per una validació completa del camí fins a l'or.
-        """
-        start_row, start_col = self.player_position
-        visited = set()
-        queue = [(start_row, start_col)]
-        visited.add((start_row, start_col))
-
-        while queue:
-            row, col = queue.pop(0)
-
-            if self.grid[row][col] == BRONZE:
-                return True
-
-            for d_row, d_col in DIRECTIONS:
-                new_row = row + d_row
-                new_col = col + d_col
-
-                if not self.is_inside(new_row, new_col):
-                    continue
-
-                if (new_row, new_col) in visited:
-                    continue
-
-                if self.grid[new_row][new_col] == BARRIER:
-                    continue
-
-                visited.add((new_row, new_col))
-                queue.append((new_row, new_col))
-
+    def is_map_playable(self):
+        from search import get_astar_path
+        path = get_astar_path(self)
+        if len(path) > 0:
+            self.initial_min_cost = len(path) - 1
+            return True
         return False
 
     def get_ring_positions(self, ring_type):
@@ -355,25 +322,3 @@ class Board:
 
     def reset(self):
         self.generate_map()
-
-    def print_board(self):
-        """
-        Funció útil per debug per terminal.
-        No afecta Raylib.
-        """
-        for row in range(self.size):
-            line = ""
-
-            for col in range(self.size):
-                if self.player_position == (row, col):
-                    line += "P "
-                else:
-                    line += self.grid[row][col] + " "
-
-            print(line)
-
-        print()
-        print(f"Bronze: {self.bronze_collected}/{BRONZE_TOTAL}")
-        print(f"Plata: {self.silver_collected}/{SILVER_TOTAL}")
-        print(f"Or: {self.gold_collected}/{GOLD_TOTAL}")
-        print(f"Moviments: {self.move_count}")
